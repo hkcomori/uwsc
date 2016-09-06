@@ -1,0 +1,13 @@
+//
+// クラスを表示する
+//
+// 機能:
+//   -マウスカーソル下のクラスを吹き出しに表示する
+//
+
+WHILE (TRUE)
+  id = GETID( GET_FROMPOINT_OBJ )
+  tmp = STATUS( id, ST_CLASS )
+  FUKIDASI( tmp )
+  sleep( 0.1 )
+WEND

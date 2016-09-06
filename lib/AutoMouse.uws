@@ -1,0 +1,127 @@
+//
+// マウス操作の自動化ライブラリ ver 0.00
+//
+// 機能:
+//   -画像認識による座標取得・操作
+//   -ダブルクリック等のインタフェース
+//
+
+class AutoMouse
+
+// 操作モード
+Const MODE_SCREEN = 0  // 通常モード
+Const MODE_DIRECT = 2  // 直接操作モード
+Dim mode = MODE_SCREEN
+
+// 操作対象ウィンドウのID
+Dim id
+
+
+////////////////////////////////////////////////////////////////
+// EnableDirect
+//   直接操作を有効にする
+//
+// a_id: 直接操作対象ウィンドウ
+////////////////////////////////////////////////////////////////
+procedure EnableDirect( a_id )
+  mode = MODE_DIRECT
+  id = a_id
+  mouseorg( id, MORG_DIRECT, MORG_BACK )
+fend
+
+////////////////////////////////////////////////////////////////
+// DisableDirect
+//   直接操作を無効にする
+////////////////////////////////////////////////////////////////
+procedure DisableDirect()
+  mode = MODE_SCREEN
+  mouseorg( 0 )
+fend
+
+////////////////////////////////////////////////////////////////
+// Click
+//   クリックする
+//
+// RESULT: 成功(TRUE), 失敗(FALSE)
+// a_btn: ボタン(LEFT, RIGHT, MIDDLE)
+// a_x: X座標
+// a_y: Y座標
+////////////////////////////////////////////////////////////////
+procedure Click( a_btn, a_x=G_MOUSE_X, a_y=G_MOUSE_Y )
+  btn( a_btn, CLICK, a_x, a_y )
+fend
+
+////////////////////////////////////////////////////////////////
+// DClick
+//   ダブルクリックする
+//
+// RESULT: 成功(TRUE), 失敗(FALSE)
+// a_btn: ボタン(LEFT, RIGHT, MIDDLE)
+// a_x: X座標
+// a_y: Y座標
+////////////////////////////////////////////////////////////////
+procedure DClick( a_btn, a_x=G_MOUSE_X, a_y=G_MOUSE_Y )
+  btn( a_btn, CLICK, a_x, a_y )
+  sleep( 0.1 )
+  btn( a_btn, CLICK, a_x, a_y )
+fend
+
+////////////////////////////////////////////////////////////////
+// GetImageXY
+//   画像と一致する座標を取得する
+//
+// RESULT: 成功(TRUE), 失敗(FALSE)
+// a_img: 画像のパス
+// a_x: X座標を格納する変数
+// a_y: Y座標を格納する変数
+// a_tmo: タイムアウト[s] (デフォルト: 30分)
+////////////////////////////////////////////////////////////////
+function GetImageXY( a_img, Var a_x, Var a_y, a_tmo=1800 )
+  start_time = gettime()
+  RESULT = FALSE
+  repeat
+    if CHKIMG( a_img )         // 指定した画像があるか
+      a_x=G_IMG_X              // 画像の座標をxへ代入
+      a_y=G_IMG_Y              // 画像の座標をyへ代入
+      RESULT = TRUE
+    endif
+  until (gettime() - start_time > a_tmo) OR RESULT
+fend
+
+////////////////////////////////////////////////////////////////
+// ClickImage
+//   画面から画像に一致する座標を探してクリックする
+//
+// RESULT: 成功(TRUE), 失敗(FALSE)
+// a_btn: ボタン(LEFT, RIGHT, MIDDLE)
+// a_img: 画像のパス
+// a_tmo: タイムアウト[s] (デフォルト: 30分)
+////////////////////////////////////////////////////////////////
+function ClickImage( a_btn, a_img, a_tmo=1800 )
+  dim button_x //X座標
+  dim button_y //Y座標
+  RESULT = GetImageXY( a_img, button_x, button_y )
+  if RESULT = TRUE
+    Click( a_btn, button_x+1, button_y+1 )
+  endif
+fend
+
+////////////////////////////////////////////////////////////////
+// DClickImage
+//   画面から画像に一致する座標を探してダブルクリックする
+//
+// RESULT: 成功(TRUE), 失敗(FALSE)
+// a_btn: ボタン(LEFT, RIGHT, MIDDLE)
+// a_img: 画像のパス
+// a_tmo: タイムアウト[s] (デフォルト: 30分)
+////////////////////////////////////////////////////////////////
+function DClickImage( a_btn, a_img, a_tmo=1800 )
+  dim button_x //X座標
+  dim button_y //Y座標
+  RESULT = GetImageXY( a_img, button_x, button_y )
+  if RESULT = TRUE
+    DClick( a_btn, button_x+1, button_y+1 )
+  endif
+fend
+
+endclass

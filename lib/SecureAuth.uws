@@ -1,0 +1,37 @@
+//
+// 認証情報管理
+//
+// 機能:
+//   -認証情報を復号して提供する
+//
+
+class SecureAuth
+
+public id
+public password
+
+////////////////////////////////////////////////////////////////
+// ID、パスワードをファイルから読み込む
+////////////////////////////////////////////////////////////////
+function new( a_path )
+  id = readini( "AUTH", "UserName", a_path )
+  password = readini( "AUTH", "Password", a_path )
+  password = decode_crypt( password )
+  if id <> "" AND password <> ""
+    RESULT = TRUE
+  else
+    RESULT = FALSE
+  endif
+fend
+  
+////////////////////////////////////////////////////////////////
+// 暗号文字列を復号する
+////////////////////////////////////////////////////////////////
+function decode_crypt( a_crypt )
+  RESULT = powershell( "$crypt = '" + a_crypt + "' | ConvertTo-SecureString; " +_
+                       "$BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($crypt); " +_
+                       "$plain = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($BSTR); " +_
+                       "echo $plain" )
+fend
+
+endclass

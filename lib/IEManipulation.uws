@@ -1,0 +1,800 @@
+//
+//  IEを自動操作するためのライブラリ ver 1.32
+//
+//  機能：
+//    ・IE上でのDOM操作
+//    ・IE上での任意のJavaScript実行と，その実行結果の取得
+//    ・IE上でのファイルのアップロード＋ダウンロード
+//    ・IE上でのDOM要素のドラッグドロップ
+//    ・IE上でのブラウザテスト（assertionを実行＋テスト結果ログをExcelに記録）
+//
+//  パッチ：
+//    ・1.31 wait_for_element_presentのバグを修正
+//    ・1.32 gidとjumpを安定化
+
+
+class IE
+
+
+  // -------------------- 制御 --------------------
+
+
+  // 新規IEオブジェクトを作成して返す
+  function new()
+    result = createOLEobj("InternetExplorer.Application")
+  fend
+
+
+  // 起動中のIEを見えるように
+  procedure show( browser )
+    browser.visible = True
+    
+    // 位置調整
+    wid = hndtoid( browser.hwnd )
+    acw( wid, 0, 0 )
+    
+    // 最大化
+    ctrlwin( wid, MAX )
+    
+    // マウス相対座標をこのブラウザ基準に設定
+    MouseOrg( wid )
+    
+    pause( browser )
+  fend
+
+
+  // IEがビジー状態の間待ちます
+  procedure wait( browser )
+    repeat
+      sleep( 0.1 )
+    until ( ! browser.busy ) and ( browser.readystate = 4 )
+    pause( browser )
+  fend
+
+
+  // URLにジャンプ
+  procedure jump( browser, url )
+    browser.navigate( url )
+    
+    total_wait_sec = 0
+    loop_flag = True
+    while loop_flag
+      // 読みこみ完了したか？
+      ifb ( ! browser.busy ) and ( browser.readystate = 4 ) then
+        loop_flag = False
+      else
+        sleep( 0.2 )
+        total_wait_sec = total_wait_sec + 0.2
+      endif
+      
+      // タイムアウトか？
+      ifb total_wait_sec > 10 then
+        // 読み込みなおし
+        browser.navigate( url )
+        
+        total_wait_sec = 0
+      endif
+    wend
+    
+    pause( browser )
+  fend
+
+
+  // ポーズ
+  procedure pause( browser )
+    sleep( 0.2 )
+  fend
+
+
+  // 要素が出現するまで待ちます
+  procedure wait_for_element_present( browser, dom_id, timeout_sec )
+    interval_sec = 0.2
+    total_wait_sec = 0
+    loop_flag = True
+
+    while loop_flag
+    
+      // 要素は現れたか
+      ifb is_element_present( browser, dom_id ) then
+        // 出現したのでループ終了
+        loop_flag = false
+      else
+        // 出現していないのでスリープ
+        sleep( interval_sec )
+        total_wait_sec = total_wait_sec + interval_sec
+      endif
+    
+      // タイムアウトか
+      ifb total_wait_sec > timeout_sec then
+        msgbox( "element '" + dom_id + "' did not appear." )
+        end_manipulation()
+      endif
+    wend
+  
+  fend
+
+
+  // 要素が存在するかどうか判定
+  function is_element_present( browser, dom_id )
+    ifb ( browser.document = Nothing ) or ( browser.document.getElementById( dom_id ) = Nothing ) then
+      result = False
+    else
+      result = True
+    endif
+  fend
+
+
+  // IEの操作スクリプトを終了します
+  procedure end_manipulation()
+    ifb _use_log_flag = True then
+      confirm_show_logging_result()
+    endif
+    
+    exitexit
+  fend
+
+
+  // -------------------- DOM操作 --------------------
+
+
+  // IDが渡された場合はDOM要素にして返します
+  function to_elem( browser, locator )
+    ifb VarType( locator ) = 8 then
+      // 変数の型が文字列の場合はDOM IDとみなす
+      result = gid( browser, locator )
+    else
+      // それ以外の場合はスルー
+      result = locator
+    endif
+
+      // VarTypeのヘルプ：http://msdn.microsoft.com/ja-jp/library/cc392346.aspx
+  fend
+
+
+  // $
+  function gid( browser, dom_id )
+  
+    total_wait_sec = 0
+    elem = Nothing
+    while total_wait_sec < 10 
+
+      // 要素はあるか？
+      ifb is_element_present( browser, dom_id ) then
+        elem = browser.document.getElementById( dom_id )
+        break
+      else
+        // 無いので，ちょっと待ってから再試行
+        sleep( 0.2 )
+        total_wait_sec = total_wait_sec + 0.2
+      endif
+      
+    wend
+    
+    result = elem
+  fend
+
+
+  // 入力
+  procedure type( browser, locator, str )
+    elem = to_elem( browser, locator )
+    elem.value = str
+    pause( browser )
+  fend
+
+
+  // クリック
+  procedure click( browser, locator )
+    elem = to_elem( browser, locator )
+    elem.click
+    pause( browser )
+  fend
+
+
+  // クリックして待機
+  procedure click_and_wait( browser, locator )
+    click( browser, locator )
+    wait( browser )
+  fend
+
+
+  // 文言ベースでセレクトボックスを選択
+  procedure select_by_label( browser, locator, label )
+    elem = to_elem( browser, locator )
+    for i = 0 to elem.options.length - 1
+      ifb elem.options[ i ].innerText = label then
+        elem.options[ i ].selected = True
+      endif
+    next
+    pause( browser )
+  fend
+
+
+  // 値ベースでセレクトボックスを選択
+  procedure select_by_value( browser, locator, val )
+    elem = to_elem( browser, locator )
+    for i = 0 to elem.options.length - 1
+      ifb elem.options[ i ].Value = val then
+        elem.options[ i ].selected = True
+      endif
+    next
+    pause( browser )
+  fend
+
+
+  // indexベースでセレクトボックスを選択
+  procedure select_by_index( browser, locator, index )
+    elem = to_elem( browser, locator )
+    elem.options[ index ].selected = True
+    pause( browser )
+  fend
+
+
+  // ファイルアップロード
+  // DOM IDではなくnameで要素を指定するので注意
+  procedure file_upload( browser, post_name, file_path )
+    IESetData( browser, file_path, post_name )
+    pause( browser )
+  fend
+
+
+  // -------------------- JavaScriptの制御 --------------------
+
+
+  // URLにジャンプし，WebページにJSコードを注入する
+  procedure jump_with_js( browser, url )
+    
+    IE.jump( browser, url )
+    IE.create_js_proxy( browser )
+    
+  fend
+
+
+  // Webページ中にJS経由用のオブジェクトを生成して返す
+  procedure create_js_proxy( browser )
+    doc = browser.document
+    
+    TextBlock js_proxy_code
+    
+// UWSCからコード注入するためのオブジェクト
+document._uwsc_proxy = {
+  global : this,
+  _window : window,
+  eval_code : function( str ){
+    try{
+      return eval( str );
+    }catch( e ){
+      // エラーメッセージを表示
+      alert( e.number + " : " + e.description );
+      return null;
+    }
+    
+  }
+};
+    
+    endTextBlock
+    
+    // 生成
+    elem_s = doc.createElement("script")
+    elem_s.text = js_proxy_code;
+    elem_s.type = "text/javascript";
+    
+    // 注入
+    doc.getElementsByTagName("head").Item(0).appendChild( elem_s );
+
+  fend
+
+
+  // 文字列をJSコードとしてブラウザ側で評価
+  procedure export_js( browser, str_jscode )
+    browser.document._uwsc_proxy.eval_code( str_jscode )
+  fend
+
+
+  // 文字列をJSコードとして評価した結果をUWSC側へ読み込み
+  function import_js( browser, str_jscode )
+    // いったん文字列をブラウザ側にexportし，その結果をUWSC側にimport
+    result = browser.document._uwsc_proxy.eval_code( str_jscode )
+  fend
+
+
+  // -------------------- ファイルダウンロード用 --------------------
+
+
+  // ダイアログが現れるまで待機
+  procedure wait_for_dialog( dialog_title, timeout_sec )
+    interval_sec = 0.2
+    total_wait_sec = 0
+    loop_flag = True
+
+    while loop_flag
+    
+      // ダイアログは現れたか
+      ifb getid( dialog_title, "#32770", -1 ) > -1 then
+        loop_flag = false
+      else
+        sleep( interval_sec )
+        total_wait_sec = total_wait_sec + interval_sec
+      endif
+    
+      // タイムアウトか
+      ifb total_wait_sec > timeout_sec then
+        msgbox( "dialog '" + dialog_title + "' did not appear." )
+        end_manipulation()
+      endif
+      
+    wend
+      
+  fend
+  
+  
+  // ダイアログにキーを送信
+  procedure send_dialog( dialog_title, key_code )
+    // 出現を待つ
+    wait_for_dialog( dialog_title, 10 )
+    sleep(1)
+    
+    // キー押下
+    id = getid( dialog_title, "#32770", -1 )
+    sckey( id, key_code )
+  fend
+  
+  
+  // ファイルのダウンロードダイアログが出たときに，ダウンロード＋保存を実行
+  procedure save_downloaded_file( browser )
+    sleep(2)
+    IE.send_dialog( "ファイルのダウンロード", vk_s )
+    IE.send_dialog( "名前を付けて保存", vk_return )
+  fend
+
+
+  // -------------------- マウス操作用 --------------------
+
+
+  // ブラウザのbody(表示領域)からwindowまでの余白長を計算
+  procedure get_client_margins( browser, var xy_margin[] )
+
+    // mousemove時の挙動を定義
+    IE.export_js( _
+      browser, _
+      "document.onmousemove = function(){ " _
+      + "document._uwsc_proxy._mouse_x = event.x;" _
+      + "document._uwsc_proxy._mouse_y = event.y;" _
+      + "};" _
+    ) // 可視領域中だけの座標を見ればよいので，document.scrollTopを足さない
+
+    // mousemoveイベントを発生させて，body内の座標を取得
+    LockHard(True)
+    mouse_screen_x = 500
+    mouse_screen_y = 500
+    mmv( mouse_screen_x, mouse_screen_y )
+    mouse_client_x = IE.import_js( browser, "document._uwsc_proxy._mouse_x" )
+    mouse_client_y = IE.import_js( browser, "document._uwsc_proxy._mouse_y" )
+    LockHard(False)
+    
+    // 差分を取得
+    client_margin_x = mouse_screen_x - mouse_client_x
+    client_margin_y = mouse_screen_y - mouse_client_y
+
+    // 返却
+    xy_margin["x"] = client_margin_x
+    xy_margin["y"] = client_margin_y
+    
+  fend
+
+
+  // DOM要素のスクリーン上での座標を取得
+  procedure get_element_screen_position( browser, locator, var xy_elem_screen[] )
+    
+    // 余白長を取得
+    HashTbl xy_margin
+    IE.get_client_margins( browser, xy_margin )
+    client_margin_x = xy_margin["x"]
+    client_margin_y = xy_margin["y"]
+
+    // 要素のスクリーン上位置を計算
+    elem = IE.to_elem( browser, locator )
+    elem_client_y = elem.offsetTop  - IE.import_js( browser, "document.body.scrollTop" )
+    elem_client_x = elem.offsetLeft - IE.import_js( browser, "document.body.scrollLeft" )
+    elem_screen_y = elem_client_y + client_margin_y
+    elem_screen_x = elem_client_x + client_margin_x
+  
+    // 返却
+    xy_elem_screen["x"] = elem_screen_x
+    xy_elem_screen["y"] = elem_screen_y
+  
+  fend
+
+
+  // 要素の上にマウスを移動
+  procedure mouse_over_on_elem( browser, locator, var xy_elem_center_screen[] )
+  
+    elem = IE.to_elem( browser, locator )
+
+    // 要素のスクリーン上の位置を取得
+    HashTbl xy_elem_screen
+    IE.get_element_screen_position( browser, elem, xy_elem_screen )
+    elem_screen_x = xy_elem_screen["x"]
+    elem_screen_y = xy_elem_screen["y"]
+      //msgbox( elem_screen_x + " " + elem_screen_y )
+
+    // 要素の中心へマウス移動
+    elem_center_x = elem_screen_x + ( Val( ChgMoj( elem.offsetWidth, "px", "" ) ) / 2 )
+    elem_center_y = elem_screen_y + ( Val( ChgMoj( elem.offsetHeight, "px", "" ) ) / 2 )
+      //msgbox( elem_center_x + " " + elem_center_y )
+    mmv( elem_center_x, elem_center_y )
+    sleep(1)
+    
+    // 開始点を返す
+    xy_elem_center_screen["x"] = elem_center_x
+    xy_elem_center_screen["y"] = elem_center_y
+  fend
+
+
+
+  // 指定要素のドラッグを開始
+  procedure start_drag( browser, locator, var xy_start_screen[] )
+  
+    elem = IE.to_elem( browser, locator )
+
+    // 要素の中心へマウス移動
+    HashTbl xy_elem_center_screen
+    IE.mouse_over_on_elem( browser, elem, xy_elem_center_screen )
+    drag_start_x = xy_elem_center_screen["x"]
+    drag_start_y = xy_elem_center_screen["y"]
+    
+    // 要素をクリック
+    btn( LEFT, DOWN, drag_start_x, drag_start_y )
+    sleep(1)
+    
+    // 開始点を返す
+    xy_start_screen["x"] = drag_start_x
+    xy_start_screen["y"] = drag_start_y
+
+  fend
+
+
+  // 指定要素をドラッグドロップ
+  // 要素と，移動距離と，所要時間を指定
+  procedure drag_drop( browser, locator, move_by_x, move_by_y, total_sec )
+    elem = IE.to_elem( browser, locator )
+    
+    // ドラッグ開始
+    HashTbl xy_start_screen
+    IE.start_drag( browser, elem, xy_start_screen )
+    start_screen_x = xy_start_screen["x"]
+    start_screen_y = xy_start_screen["y"]
+    
+    // 移動
+    LockHard(True)
+    interval_sec = 0.2 // ループ一回にかかる秒数
+    move_step_num = total_sec / interval_sec // 移動に要するステップ数
+    step_x = move_by_x / move_step_num // 1ステップの移動距離
+    step_y = move_by_y / move_step_num
+    moved_x = 0 // 累積移動距離
+    moved_y = 0
+    i = 0
+    while i < move_step_num
+      moved_x = step_x * ( i + 1 )
+      moved_y = step_y * ( i + 1 )
+      mmv( start_screen_x + moved_x, start_screen_y + moved_y )
+      sleep( interval_sec )
+      i = i + 1
+    wend
+    
+    // 左ボタンを上げる
+    btn( LEFT, UP, start_screen_x + move_by_x, start_screen_y + move_by_y )
+    LockHard(False)
+    sleep(1)
+    
+  fend
+
+
+  // -------------------- テスト実行用 --------------------
+
+
+  // 要素の値を検証
+  procedure assert_value( browser, locator, val_expected )
+  
+    elem = to_elem( browser, locator )
+    val_real = elem.value
+    
+    assert_str( val_expected, val_real )
+  
+  fend
+
+
+  // 要素内の文字列を検証
+  procedure assert_text( browser, locator, val_expected )
+  
+    elem = to_elem( browser, locator )
+    val_real = elem.innerText
+    
+    assert_str( val_expected, val_real )
+  
+  fend
+
+
+  // 文字列同士を比較
+  procedure assert_str( val_expected, val_real )
+  
+    log_str = "期待値 : '" + val_expected + "', 実際の値 : '" +  val_real + "'"
+  
+    // 一致するか
+    ifb val_expected = val_real then
+      // OK
+      try_assert_log( "OK", log_str )
+    else
+      try_assert_log( "NG", log_str )
+      msgbox( "NG : " + log_str )
+      
+      quit_by_fail_assert()
+    endif
+  
+  fend
+  
+  
+  // assert失敗時に強制終了
+  procedure quit_by_fail_assert()
+    // ログを閉じる
+    save_and_close_logfile()
+  
+    // スクリプトを強制終了
+    end_manipulation()
+  fend
+  
+  
+  // 要素が存在することを検証
+  procedure assert_element_present( browser, dom_id )
+
+    ifb is_element_present( browser, dom_id ) then
+      try_assert_log( "OK", "DOM要素 '" + dom_id + "' は存在" )
+    else
+      ng_str = "DOM要素 '" + dom_id + "' は非存在"
+      try_assert_log( "NG", ng_str )
+      msgbox( "NG : " + ng_str )
+      
+      quit_by_fail_assert()
+    endif
+
+  fend
+  
+  
+  // 要素が存在しないことを検証
+  procedure assert_element_not_present( browser, dom_id )
+
+    ifb is_element_present( browser, dom_id ) then
+      ng_str = "DOM要素 '" + dom_id + "' は存在"
+      try_assert_log( "NG", ng_str )
+      msgbox( "NG : " + ng_str )
+      
+      quit_by_fail_assert()
+    else
+      try_assert_log( "OK", "DOM要素 '" + dom_id + "' は非存在" )
+    endif
+
+  fend
+
+  
+  // JavaScriptの実行結果を検証
+  procedure assert_jscode( browser, str_jscode, str_expected )
+  
+    val_expected = import_js( browser, str_expected )
+    val_real = import_js( browser, str_jscode )
+    
+    ifb val_expected = val_real then
+      // OK
+      try_assert_log( "OK", "一致" )
+    else
+      try_assert_log( "NG", "不一致" )
+      msgbox( "NG : " + "不一致" )
+      
+      quit_by_fail_assert()
+    endif
+  
+  fend
+  
+
+  // -------------------- ロギング用 --------------------
+
+
+  // ログを取るかどうかのフラグ
+  dim _use_log_flag = False
+  
+  
+  // ログ用のExcelファイル名
+  dim _log_xls_path
+  
+  
+  // ログ用のExcelファイルオブジェクト
+  dim _log_xls_obj = Nothing
+  
+  
+  // 現在のログ出力先シート
+  dim _log_sheet_name
+  
+  
+  // 現在のログ出力先行番号
+  dim _log_col_num
+  
+  
+  // 現在のログ出力先列番号
+  dim _log_row_num
+  
+  
+  // ログを取るかどうか設定する
+  procedure use_log( flag )
+    
+    _use_log_flag = flag
+  
+  fend
+
+
+  // assert時のログ出力
+  procedure try_assert_log( summary_str, log_str )
+  
+    ifb _use_log_flag = True then
+      record_log( summary_str, log_str )
+    endif
+  
+  fend
+
+
+  // ログ出力
+  procedure record_log( summary_str, log_str )
+  
+      //msgbox( summary_str )
+    target_sheet = _log_xls_obj.Sheets( _log_sheet_name )
+
+    // 1列目にはサマリ（OK/NG）
+    target_sheet.Cells( _log_col_num, _log_row_num ).Value = summary_str
+    // 2列目には詳細
+    target_sheet.Cells( _log_col_num, _log_row_num + 1 ).Value = log_str
+    // 3列目には日付
+    target_sheet.Cells( _log_col_num, _log_row_num + 2 ).Value = "'" + current_time_for_log()
+
+  fend
+  
+  
+  // ログ出力用のExcelを設定して開く
+  procedure open_xls_as_logfile( xls_path )
+  
+    // 開く
+    _log_xls_obj = open_logfile_with_new_excel( xls_path )
+    _log_xls_path = xls_path
+  
+    ifb _log_xls_obj.ActiveWorkBook.ReadOnly = -1 then
+      msgbox( "エラー：記録用のExcelファイルが二重に開かれています。閉じてから再実行してください。" )
+      close_logfile()
+      exitexit
+    endif
+    
+    // 最小化
+    xlMinimized = -4140
+    _log_xls_obj.WindowState = xlMinimized
+    
+  fend
+  
+  
+  // ログファイルを開く
+  function open_logfile_with_new_excel( xls_path )
+    excel = createOLEobj("Excel.Application")
+    excel.Visible = True
+    excel.WorkBooks.Open( xls_path )
+    
+    result = excel
+  fend
+  
+  
+  // ログ出力用のExcelを保存
+  procedure save_xls_as_logfile()
+  
+    ifb !( _log_xls_obj = Nothing ) then
+      _log_xls_obj.DisplayAlerts = False
+      book = _log_xls_obj.Workbooks( _log_xls_obj.Workbooks.Count )
+      // 上書き保存
+      book.SaveAs( _log_xls_path )
+      _log_xls_obj.DisplayAlerts = True
+    endif
+    
+  fend
+  
+  
+  // ログ出力用のExcelを閉じる
+  procedure close_logfile()
+  
+    ifb !( _log_xls_obj = Nothing ) then
+      book = _log_xls_obj.Workbooks( _log_xls_obj.Workbooks.Count )
+      // 閉じる
+      book.Close
+      _log_xls_obj.Quit()
+    endif
+  
+  fend
+  
+  
+  // ログを保存して閉じる
+  procedure save_and_close_logfile()
+    
+    ifb !( _log_xls_obj = Nothing ) then
+      save_xls_as_logfile()
+      close_logfile()
+    endif
+    
+  fend
+  
+  
+  // ログ出力先のシート名とセル位置をセット
+  procedure set_pgcount( sheet_name, xls_col_num, xls_row_num )
+  
+    // 保持
+    _log_sheet_name = sheet_name
+    _log_col_num = xls_col_num
+    _log_row_num = xls_row_num
+  
+  fend
+
+
+  // ログの結果を閲覧するかどうか確認
+  procedure confirm_show_logging_result()
+    
+    ifb MsgBox("終了しました。ログを閲覧しますか？", BTN_YES or BTN_NO) = BTN_YES then
+      excel = open_logfile_with_new_excel( _log_xls_path )
+      excel.ActiveWorkbook.Saved = True
+    endif
+  
+  fend
+
+
+  // -------------------- 共通ユーティリティ --------------------
+
+
+  // 現在時刻をログ用に文字列で返す
+  function current_time_for_log()
+    GetTime()
+    result = G_TIME_YY4 _
+      + "/" _
+      + dig2( G_TIME_MM ) _
+      + "/" _
+      + dig2( G_TIME_DD ) _
+      + " " _
+      + dig2( G_TIME_HH ) _
+      + ":" _
+      + dig2( G_TIME_NN ) _
+      + ":" _
+      + dig2( G_TIME_SS ) _
+      + ":" _
+      + dig3( G_TIME_ZZ )
+  fend
+  
+  
+  // 数値を2桁に0埋め
+  function dig2( num )
+  
+    ifb num < 10 then
+      str = "0" + num
+    else
+      str = "" + num
+    endif
+    
+    result = str
+  
+  fend
+  
+  
+  // 数値を3桁に0埋め
+  function dig3( num )
+  
+    ifb num < 10 then
+      str = "00" + num
+    elseif num < 100 then
+      str = "0" + num
+    else
+      str = "" + num
+    endif
+    
+    result = str
+  
+  fend
+  
+  
+endclass
