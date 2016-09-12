@@ -1,0 +1,8 @@
+@powershell -NoProfile -ExecutionPolicy Unrestricted "$s=[scriptblock]::create((gc \"%~f0\"|?{$_.readcount -gt 1})-join\"`n\");&$s" %*&goto:eof
+
+$cred = get-credential
+$UserName = $cred.UserName.Substring( 1, $cred.UserName.Length-1 )
+$Password = $cred.Password | ConvertFrom-SecureString
+"[Auth]" | Set-Content "Auth.ini"
+"UserName=" + $UserName | Add-Content "Auth.ini"
+"Password=" + $Password | Add-Content "Auth.ini"
